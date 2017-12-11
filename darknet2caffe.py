@@ -5,7 +5,7 @@ import numpy as np
 from collections import OrderedDict
 from cfg import *
 from prototxt import *
-
+caffe.set_device(2)
 def darknet2caffe(cfgfile, weightfile, protofile, caffemodel):
     net_info = cfg2prototxt(cfgfile)
     save_prototxt(net_info , protofile, region=False)
@@ -42,6 +42,8 @@ def darknet2caffe(cfgfile, weightfile, protofile, caffemodel):
             if batch_normalize:
                 start = load_conv_bn2caffe(buf, start, params[conv_layer_name], params[bn_layer_name], params[scale_layer_name])
             else:
+                if conv_layer_name=='layer75-conv':
+                    a=0
                 start = load_conv2caffe(buf, start, params[conv_layer_name])
             layer_id = layer_id+1
         elif block['type'] == 'connected':
@@ -248,10 +250,33 @@ def cfg2prototxt(cfgfile):
             topnames[layer_id] = bottom
             layer_id = layer_id + 1
         elif block['type'] == 'route':
-            prev_layer_id = layer_id + int(block['layers'])
-            bottom = topnames[prev_layer_id]
-            topnames[layer_id] = bottom
-            layer_id = layer_id + 1
+            lys = block['layers'].split(',')
+            bottom = []
+            if len(lys)==1:
+
+                prev_layer_id = layer_id + int(lys[0])#int(block['layers'])
+                bottom=topnames[prev_layer_id]
+                topnames[layer_id] = bottom
+                layer_id = layer_id + 1
+            else:
+
+                for l in lys:
+                    prev_layer_id = layer_id + int(l)
+                    bottom.append(topnames[prev_layer_id])
+
+                concat_layer = OrderedDict()
+                concat_layer['bottom'] = bottom
+                if block.has_key('name'):
+                    concat_layer['top'] = block['name']
+                    concat_layer['name'] = block['name']
+                else:
+                    concat_layer['top'] = 'layer%d-concat' % layer_id
+                    concat_layer['name'] = 'layer%d-concat' % layer_id
+                concat_layer['type'] = 'Concat'
+                layers.append(concat_layer)
+                bottom = concat_layer['top']
+                topnames[layer_id] = bottom
+                layer_id = layer_id + 1
         elif block['type'] == 'shortcut':
             prev_layer_id1 = layer_id + int(block['from'])
             prev_layer_id2 = layer_id - 1
